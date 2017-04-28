@@ -1,18 +1,35 @@
+#include <DNSServer.h>
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
 #include <ESP8266HTTPUpdateServer.h>
+#include "WiFiManager.h"
 
+#include <Adafruit_GFX.h>
+#include <Adafruit_NeoMatrix.h>
 #include <Adafruit_NeoPixel.h>
 #ifdef __AVR__
   #include <avr/power.h>
 #endif
 
-#define PIN 13
+//NOTE: To put the badge into program mode (for use when programming via FTDI cable), first hold down "program", then push "reset".
+//Once the board resets, you may let go of the program button.  It should now be ready to receive a program over its FTDI pins.
 
-//The number of times we try to connect to the specified network before we give up and reboot.
-#define WL_RETRY_COUNT 5
+#define LED_DATA 13
+
+//The pin for our "program" button, which does double duty as a simple method of user input.
+#define BUTTON 0
+
+//HOWTO: Battery check
+//#define BATT_CHECK_PIN 20
+//Turn batt_check pin high
+//Read ADC (A0)
+//Divide that value by 243.6 for voltage.
+//Turn batt_check pin low
+
+//The number of seconds we wait in the AP config portal mode before giving up and rebooting.
+#define PORTAL_TIMEOUT 180
 
 // Parameter 1 = number of pixels in strip
 // Parameter 2 = Arduino pin number (most are valid)
@@ -22,15 +39,19 @@
 //   NEO_GRB     Pixels are wired for GRB bitstream (most NeoPixel products)
 //   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
 //   NEO_RGBW    Pixels are wired for RGBW bitstream (NeoPixel RGBW products)
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(25, PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(25, LED_DATA, NEO_GRB + NEO_KHZ800);
+
+// IMPORTANT: To reduce NeoPixel burnout risk, add 1000 uF capacitor across
+// pixel power leads, add 300 - 500 Ohm resistor on first pixel's data input
+// and minimize distance between Arduino and first pixel.  Avoid connecting
+// on a live circuit...if you must, connect GND first.
 
 
+//This is the format for the badge's hostname.  Change this if you want to make it easier to identify.
+//The %06x part will be filled in with the ESP8266's unique ID.
 const char* host = "esp8266-%06x-webupdater";
 //The longest string size we can use for the hostname.
 #define MAX_HOST_NAME_LEN 26
-
-const char* ssid = "TEST";
-const char* password = "TEST";
 
 //Keep track of the initial bootup period.  We might want to enter the OTA upload mode.
 bool bootup = true;
@@ -44,36 +65,58 @@ void setup() {
 
   //Set up the pin for LED use.
   strip.begin();
-  //Should clear out any colors that might be stuck on at startup.
+  //Should clear out any colors that might be stuck on at startup. 
   strip.show();
- 
+  
   //Allows us to use the "program" (top) button in our program.
-  pinMode(0, INPUT_PULLUP);
+  pinMode(BUTTON, INPUT_PULLUP);
 }
 
 void loop() {
   //When the program first starts up, we must check if the user wishes to enter OTA upload mode.
   if(bootup == true) {
+    solidColor(strip.Color(0, 50, 0), 0);
     //Give the user a few moments to hold down the program button.
-    delay(2000);
+    setBrightness(50, 1000);
+    setBrightness(100, 1000);
 
-    //User is holding down the program button, so go into OTA upload mode.
-    if(digitalRead(0) == LOW) {
+    //If the user holds down the programming button very close to startup, reset the WiFi connection settings.
+    if(digitalRead(BUTTON) == LOW) {
+      solidColor(strip.Color(100, 0, 0), 0);
+      //Although this appears to be the correct way to forget association settings in the WiFiManager API, it looks like a stub function currently.
+      //WiFiManager wifiManager;
+      //wifiManager.resetSettings();
+      //This is another way to forget association settings.
+      Serial.println("Forgetting saved AP association settings!");
+      WiFi.disconnect();
+      //ESP.restart();
+      //delay(1000);
+      //Presumably from here we will want to go into the AP setup mode.
+      otaUpload();
+    }
+
+    solidColor(strip.Color(50, 50, 0), 0);
+    //Wait a little longer before possibly going into the OTA update stuff.
+    setBrightness(50, 2000);
+    setBrightness(100, 2000);
+
+    //User is holding down the program button after a few seconds of startup, so go into OTA upload mode.
+    if(digitalRead(BUTTON) == LOW) {
       otaUpload();
     }
     
-    //If we fall through to here, the program button isn't being held down, and we will just run the normal code.
+    //If we fall through to here, the program button isn't being held down at any point, and we will just run the normal code.
     //Never return to this code again, until the user resets the device.
     bootup = false;
     Serial.println("Skipping OTA upload...");
   }
+
+
+  //NOTE: Here's where the code for the main program should start.  Go hog wild!
+  setBrightness(0, 0);
+  strip.show(); 
+  setBrightness(20, 0);
   
-  //Brightness can be 0-255
-  //0 off, 1-2 produce slight odd behavor due to low voltage
-  //10 is a decent setting of battery life
-  //Over 15 will likely be painful for others' eyes.
-  setBrightness(10, 0);
- 
   // Some example procedures showing how to display to the pixels:
   colorWipe(strip.Color(127, 0, 0), 50); // Red
   colorWipe(strip.Color(0, 127, 0), 50); // Green
@@ -84,67 +127,72 @@ void loop() {
   theaterChase(strip.Color(127, 0, 0), 50); // Red
   theaterChase(strip.Color(0, 0, 127), 50); // Blue
 
-  //Demo code
   rainbow(20);
   rainbowCycle(20);
   theaterChaseRainbow(50);
-  Serial.println("Demo code cycled");
+}
+
+//This function gets called when the AP configuration mode is started.
+void configModeCallback (WiFiManager *myWiFiManager) {
+  Serial.println("Entering AP association config mode");
+  Serial.println(WiFi.softAPIP());
+  //Debug print out the AP name used by the badge.
+  Serial.println(myWiFiManager->getConfigPortalSSID());
+  solidColor(strip.Color(50, 0, 50), 0);
+  setBrightness(50, 2000);
+  setBrightness(100, 2000);
 }
 
 //This function handles the process of waiting for an OTA upload to happen at bootup.
 void otaUpload(void) {
   Serial.println("Entering OTA upload mode!");
-  //Start up WiFi
-  WiFi.mode(WIFI_AP_STA);
- 
-  //Check for a good connection.
-  int retryCount = 0;
+  
+  //WiFiManager
+  //Local intialization. Once its business is done, there is no need to keep it around
+  WiFiManager wifiManager;
 
-  solidColor(strip.Color(0, 50, 0), 0);
-  setBrightness(50, 0);
-  Serial.println("Connecting to network...");
-  WiFi.begin(ssid, password);
- 
-  while(WiFi.waitForConnectResult() != WL_CONNECTED) {
-    WiFi.begin(ssid, password);
-    //Show LED/Serial heartbeat if we are having problems connecting.
-    setBrightness(100, 2000);
-    Serial.println("Connection Failed! Retrying...");
-    setBrightness(50, 2000);
-    
-    if(retryCount == WL_RETRY_COUNT) {
-      //Reboot if we can't get a connection.
-      //Might be something funky going on with the state of the hardware?
-      //TODO: Have more grace with this in the future?
-      ESP.restart();
-    }
+  wifiManager.setConfigPortalTimeout(PORTAL_TIMEOUT);
+  //set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
+  wifiManager.setAPCallback(configModeCallback);
 
-    retryCount++;
-  }
-
-  //Begin upload handling.
   //Might cut off characters if the constant string is too long.
   char myHost[MAX_HOST_NAME_LEN];
-  snprintf(myHost, sizeof(myHost), host, ESP.getChipId());
- 
+  snprintf(myHost, sizeof(myHost), host, ESP.getChipId()); 
+
+  //This will first try to connect using the last-configured SSID and password
+  //If it fails to connect, it starts an access point with the specified name (myHost) and optional password (the commented-out part)
+  //It then goes into a blocking loop awaiting configuration until it times out (in PORTAL_TIMEOUT seconds).
+  //HINT: Change the hostname to make it easy to find in a room full of these things.
+  if(!wifiManager.autoConnect(myHost /*, "<optional-ap-password-for-your-badge>"*/)) {
+    Serial.println("Failed to associate with AP, and exceeded timeout!");
+    //Nothing happened before our timeout period -- reset
+    solidColor(strip.Color(100, 0, 0), 0);
+    setBrightness(50, 2000);
+    setBrightness(100, 2000);
+    ESP.reset();
+    delay(1000);
+  }
+  
+  //Begin upload handling.
+  //Also broadcast this board's hostname over multicast DNS so it's easier to find.
   MDNS.begin(myHost);
   httpUpdater.setup(&httpServer);
   httpServer.begin();
   MDNS.addService("http", "tcp", 80);
- 
+  
   Serial.print("ESP IP address: ");
   Serial.println(WiFi.localIP());
   Serial.printf("HTTPUpdateServer ready! Open http://%s.local/update in your browser\n", myHost);
- 
+  
   Serial.println("Waiting for upload...");
   solidColor(strip.Color(0, 0, 50), 0);
-  //We just wait in here very patiently until the user sends us something. The only way out is to reset.
+  //We just wait in here very patiently until the user sends us something.  The only way out is to reset.
   while(true) {
     //Set up an LED/Serial "heartbeat" status to let user know we are waiting for data in OTA upload mode.
     setBrightness(50, 1000);
     Serial.print(" ?");
     httpServer.handleClient();
-    setBrightness(255, 1000);
+    setBrightness(100, 1000);
   }
 }
 
@@ -189,8 +237,7 @@ void rainbowCycle(uint8_t wait) {
 
   for(j=0; j<256*5; j++) { // 5 cycles of all colors on wheel
     for(i=0; i< strip.numPixels(); i++) {
-      strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j) &
-255));
+      strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j) & 255));
     }
     strip.show();
     delay(wait);
@@ -247,4 +294,3 @@ uint32_t Wheel(byte WheelPos) {
   WheelPos -= 170;
   return strip.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
 }
-
