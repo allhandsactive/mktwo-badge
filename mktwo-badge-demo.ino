@@ -6,8 +6,6 @@
 #include <ESP8266HTTPUpdateServer.h>
 #include "WiFiManager.h"
 
-#include <Adafruit_GFX.h>
-#include <Adafruit_NeoMatrix.h>
 #include <Adafruit_NeoPixel.h>
 #ifdef __AVR__
   #include <avr/power.h>
@@ -40,12 +38,6 @@
 //   NEO_RGB     Pixels are wired for RGB bitstream (v1 FLORA pixels, not v2)
 //   NEO_RGBW    Pixels are wired for RGBW bitstream (NeoPixel RGBW products)
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(25, LED_DATA, NEO_GRB + NEO_KHZ800);
-
-// IMPORTANT: To reduce NeoPixel burnout risk, add 1000 uF capacitor across
-// pixel power leads, add 300 - 500 Ohm resistor on first pixel's data input
-// and minimize distance between Arduino and first pixel.  Avoid connecting
-// on a live circuit...if you must, connect GND first.
-
 
 //This is the format for the badge's hostname.  Change this if you want to make it easier to identify.
 //The %06x part will be filled in with the ESP8266's unique ID.
@@ -163,6 +155,7 @@ void otaUpload(void) {
   //If it fails to connect, it starts an access point with the specified name (myHost) and optional password (the commented-out part)
   //It then goes into a blocking loop awaiting configuration until it times out (in PORTAL_TIMEOUT seconds).
   //HINT: Change the hostname to make it easy to find in a room full of these things.
+  //HINT #2: This DOES NOT work AT ALL when connecting to a network that uses an authentication gateway!
   if(!wifiManager.autoConnect(myHost /*, "<optional-ap-password-for-your-badge>"*/)) {
     Serial.println("Failed to associate with AP, and exceeded timeout!");
     //Nothing happened before our timeout period -- reset
@@ -186,8 +179,10 @@ void otaUpload(void) {
   
   Serial.println("Waiting for upload...");
   solidColor(strip.Color(0, 0, 50), 0);
+
   //We just wait in here very patiently until the user sends us something.  The only way out is to reset.
   while(true) {
+    //HINT: If the board is resetting here, you might need to supply it with more power, e.g. use a 2 amp USB charger, or plug in the battery.
     //Set up an LED/Serial "heartbeat" status to let user know we are waiting for data in OTA upload mode.
     setBrightness(50, 1000);
     Serial.print(" ?");
