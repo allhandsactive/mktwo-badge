@@ -54,6 +54,7 @@ Also known as OTA (or *Over The Air*) programming.  Once you have our demo code 
 The interface to program the badge is a little rudimentary (feel free to improve upon!).  It works like this:
 
 Step 1. Associate the *mktwo* with an AP you can access.
+
 Step 2. Send code to the *mktwo* on that AP's network, using the *mktwo*'s hosted code upload webpage.
 
 To break it down further:
