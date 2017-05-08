@@ -59,7 +59,7 @@ Step 2. Send code to the *mktwo* on that AP's network, using the *mktwo*'s hoste
 
 To break it down further:
 
-**Step 1.** When the badge is powered on, you will see it flash green.  Hold down `PROGRAM` until it turns red, and then purple.  Your badge will now be running as an access point you can connect to.  By default, it will show up as an AP named something like *ESP8266-(some ID)-webupdater*.  **NOTE: Make note of this AP name! You will need to connect to a similarly-named URL in the next step.**
+**Step 1.** When the badge is powered on, you will see it flash green.  Hold down `PROGRAM` until it turns red, and then purple.  Your badge will clear out any existing AP credentials, and will be running as an access point you can connect to.  By default, it will show up as an AP named something like *ESP8266-(some ID)-webupdater*.  **NOTE: Make note of this AP name! You will need to connect to a similarly-named URL in the next step.**
 
 Connect to this AP, and then visit in your browser the URL: `http://192.168.4.1`.  You will get a webpage that directs you to scan for networks.  Choose the "Configure WiFi" button, and you will see a list of APs seen by your *mktwo*.  Choose your network, and enter the password (if needed).  The *mktwo* will save the credentials, and if everything worked, will start flashing blue.
 
